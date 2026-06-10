@@ -1,3 +1,4 @@
+import { e01First3Checklist, e01First3KeyframePrompts, e01First3SeedancePrompts } from '../data/e01ProductionPack'
 import type { Asset, Episode, ProjectBible, ShotCard } from '../types/production'
 
 export const downloadTextFile = (fileName: string, content: string, mimeType = 'text/plain;charset=utf-8') => {
@@ -80,7 +81,7 @@ ${episode.beats
     .join('\n---\n')
 
 export const seedancePrompt = (shot: ShotCard) =>
-  `${shot.videoPromptCN}\nSeedance 補充：5-10 秒，直式 9:16，一個清楚動作，電影感鏡頭運動，角色一致穩定，沒有字幕、浮水印或畫面文字。`
+  `${shot.videoPromptCN}\nSeedance 補充：5-10 秒，直式 9:16，一個清楚動作，電影感鏡頭運動，角色一致穩定，沒有字幕、浮水印或 logo。`
 
 export const klingPrompt = (shot: ShotCard) =>
   `Kling 圖生片提示詞：直式 9:16。第一幀：${shot.scene}，主體為 ${shot.characters.join('、') || shot.title}。動作延續：${shot.action}。最後幀：動作完成後保持 ${shot.emotion} 的情緒。鏡頭：${shot.cameraAngle}，${shot.cameraMovement}。保持主體穩定、動作乾淨、不要複雜連續運動、不要字幕或水印。`
@@ -93,6 +94,38 @@ export const promptsText = (shots: ShotCard[], field: 'imagePromptCN' | 'videoPr
 
 export const seedancePromptsText = (shots: ShotCard[]) =>
   shots.map((shot) => `## ${shot.shotId} ${shot.title}\n${seedancePrompt(shot)}\n\nNegative:\n${shot.negativePromptCN}`).join('\n\n')
+
+export const e01First3KeyframePromptsText = () =>
+  e01First3KeyframePrompts.map((item) => `## ${item.id} ${item.title}\n${item.prompt}\n\nNegative Prompt:\n${item.negativePrompt}`).join('\n\n')
+
+export const e01First3SeedancePromptsText = () =>
+  e01First3SeedancePrompts.map((item) => `## ${item.shotId} ${item.title}\n${item.prompt}\n\nNegative Prompt:\n${item.negativePrompt}`).join('\n\n')
+
+export const e01First3NegativePromptsText = () =>
+  [
+    ...e01First3KeyframePrompts.map((item) => `## ${item.id} ${item.title}\n${item.negativePrompt}`),
+    ...e01First3SeedancePrompts.map((item) => `## ${item.shotId} ${item.title}\n${item.negativePrompt}`),
+  ].join('\n\n')
+
+export const e01First3ProductionChecklistMarkdown = () =>
+  `# E01 First 3 Shots Production Checklist
+
+## Required Asset Checklist
+${e01First3Checklist
+  .map(
+    (shot) => `### ${shot.shotId} ${shot.action}
+${shot.requiredAssets.map((asset) => `- [ ] ${asset}`).join('\n')}`,
+  )
+  .join('\n\n')}
+
+## Production Order
+- [ ] 建立蘇璃 Reference Pack
+- [ ] 生成 6 張 keyframe / reference images
+- [ ] 生成 E01-S001 Seedance test clip
+- [ ] 生成 E01-S002 Seedance test clip
+- [ ] 生成 E01-S003 Seedance test clip
+- [ ] 回填 generated file links 到 Shot Version History / Asset Library
+`
 
 export const assetsMarkdown = (assets: Asset[]) =>
   `# Asset Library\n\n${assets

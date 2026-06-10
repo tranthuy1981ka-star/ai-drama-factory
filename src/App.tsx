@@ -38,6 +38,10 @@ import {
   beatSheetsMarkdown,
   downloadTextFile,
   episodeConceptsMarkdown,
+  e01First3KeyframePromptsText,
+  e01First3NegativePromptsText,
+  e01First3ProductionChecklistMarkdown,
+  e01First3SeedancePromptsText,
   jimengPrompt,
   klingPrompt,
   projectBibleMarkdown,
@@ -1054,7 +1058,6 @@ function ExportCenterPage({
   importProjectState: (state: ProjectStateExport) => void
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const e01FirstThree = shotCards.filter((shot) => firstThreeShotIds.includes(shot.shotId))
   const approvedSeedanceShots = shotCards.filter((shot) => shot.episodeId === 'E01' && ['Video Prompt Ready', 'Generated', 'Final Approved'].includes(shot.status))
   const projectState = () => JSON.stringify(createProjectStateExport(), null, 2)
   const exports = [
@@ -1064,8 +1067,10 @@ function ExportCenterPage({
     ['Shot Cards as JSON', 'suli_e01_e03_shot_cards.json', JSON.stringify(shotCards, null, 2), 'application/json;charset=utf-8'],
     ['All Image Prompts as TXT', 'suli_all_image_prompts.txt', promptsText(shotCards, 'imagePromptCN'), 'text/plain;charset=utf-8'],
     ['All Video Prompts as TXT', 'suli_all_video_prompts.txt', promptsText(shotCards, 'videoPromptCN'), 'text/plain;charset=utf-8'],
-    ['E01 First 3 Image Prompts', 'e01_first_3_image_prompts.txt', promptsText(e01FirstThree, 'imagePromptCN'), 'text/plain;charset=utf-8'],
-    ['E01 First 3 Seedance Prompts', 'e01_first_3_seedance_prompts.txt', seedancePromptsText(e01FirstThree), 'text/plain;charset=utf-8'],
+    ['E01 First 3 Keyframe Image Prompts', 'e01_first_3_keyframe_image_prompts.txt', e01First3KeyframePromptsText(), 'text/plain;charset=utf-8'],
+    ['E01 First 3 Seedance Video Prompts', 'e01_first_3_seedance_video_prompts.txt', e01First3SeedancePromptsText(), 'text/plain;charset=utf-8'],
+    ['E01 First 3 Negative Prompts', 'e01_first_3_negative_prompts.txt', e01First3NegativePromptsText(), 'text/plain;charset=utf-8'],
+    ['E01 First 3 Production Checklist', 'e01_first_3_production_checklist.md', e01First3ProductionChecklistMarkdown(), 'text/markdown;charset=utf-8'],
     ['E01 Approved-only Seedance Prompts', 'e01_approved_seedance_prompts.txt', seedancePromptsText(approvedSeedanceShots), 'text/plain;charset=utf-8'],
     ['Asset List as Markdown', 'suli_asset_library.md', assetsMarkdown(assets), 'text/markdown;charset=utf-8'],
     ['Full Project State JSON', 'ai_drama_factory_project_state_v011.json', projectState(), 'application/json;charset=utf-8'],
