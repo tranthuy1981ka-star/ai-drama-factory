@@ -19,8 +19,10 @@ export type EpisodeStatus =
   | 'In Generation'
   | 'Final Approved'
 
-export type AssetStatus = 'Missing' | 'Available' | 'Needs Update'
+export type AssetStatus = 'Missing' | 'Available' | 'Needs Update' | 'Approved Reference'
 export type AssetType = 'character' | 'location' | 'prop' | 'monster' | 'expression' | 'fx'
+export type ModelUsed = 'Seedance' | 'Kling' | 'Jimeng' | 'Other'
+export type ResultStatus = 'Approved' | 'Rejected' | 'Maybe'
 
 export interface Location {
   id: string
@@ -108,7 +110,37 @@ export interface Asset {
   description: string
   suggestedPath: string
   status: AssetStatus
+  googleDriveUrl: string
+  thumbnailUrl: string
+  approvedVersion: string
   usageNotes: string
+}
+
+export interface AssetMetadata {
+  googleDriveUrl: string
+  thumbnailUrl: string
+  approvedVersion: string
+  usageNotes: string
+}
+
+export interface ShotVersion {
+  versionId: string
+  modelUsed: ModelUsed
+  fileUrl: string
+  resultStatus: ResultStatus
+  issueNotes: string
+  createdAt: string
+}
+
+export interface ProjectStateExport {
+  schemaVersion: '0.1.1'
+  exportedAt: string
+  shotStatusOverrides: StatusOverrides
+  episodeStatusOverrides: EpisodeStatusOverrides
+  beatStatusOverrides: StatusOverrides
+  assetStatusOverrides: AssetStatusOverrides
+  assetMetadata: Record<string, AssetMetadata>
+  shotVersionHistory: Record<string, ShotVersion[]>
 }
 
 export type StatusOverrides = Record<string, ProductionStatus>

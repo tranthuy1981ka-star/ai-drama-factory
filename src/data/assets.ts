@@ -13,6 +13,9 @@ const asset = (
   description,
   suggestedPath: `AI_Drama_Factory/04_Character_Refs/${name}`,
   status: 'Missing',
+  googleDriveUrl: '',
+  thumbnailUrl: '',
+  approvedVersion: '',
   usageNotes,
 })
 

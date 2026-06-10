@@ -79,8 +79,20 @@ ${episode.beats
     )
     .join('\n---\n')
 
+export const seedancePrompt = (shot: ShotCard) =>
+  `${shot.videoPromptCN}\nSeedance 補充：5-10 秒，直式 9:16，一個清楚動作，電影感鏡頭運動，角色一致穩定，沒有字幕、浮水印或畫面文字。`
+
+export const klingPrompt = (shot: ShotCard) =>
+  `Kling 圖生片提示詞：直式 9:16。第一幀：${shot.scene}，主體為 ${shot.characters.join('、') || shot.title}。動作延續：${shot.action}。最後幀：動作完成後保持 ${shot.emotion} 的情緒。鏡頭：${shot.cameraAngle}，${shot.cameraMovement}。保持主體穩定、動作乾淨、不要複雜連續運動、不要字幕或水印。`
+
+export const jimengPrompt = (shot: ShotCard) =>
+  `即夢影片提示詞：直式 9:16，${shot.location}，${shot.scene}。畫面主體是 ${shot.characters.join('、') || shot.title}，以華語都市奇幻動畫風格呈現。${shot.action}，情緒是${shot.emotion}，冷色電影感燈光，氣氛清晰，適合用關鍵幀圖生片，保持角色外觀一致，不加入字幕或水印。`
+
 export const promptsText = (shots: ShotCard[], field: 'imagePromptCN' | 'videoPromptCN') =>
   shots.map((shot) => `## ${shot.shotId} ${shot.title}\n${shot[field]}\n\nNegative:\n${shot.negativePromptCN}`).join('\n\n')
+
+export const seedancePromptsText = (shots: ShotCard[]) =>
+  shots.map((shot) => `## ${shot.shotId} ${shot.title}\n${seedancePrompt(shot)}\n\nNegative:\n${shot.negativePromptCN}`).join('\n\n')
 
 export const assetsMarkdown = (assets: Asset[]) =>
   `# Asset Library\n\n${assets
@@ -91,6 +103,9 @@ export const assetsMarkdown = (assets: Asset[]) =>
 - 狀態：${asset.status}
 - 描述：${asset.description}
 - 建議路徑：${asset.suggestedPath}
+- Google Drive：${asset.googleDriveUrl || '未設定'}
+- Thumbnail：${asset.thumbnailUrl || '未設定'}
+- Approved Version：${asset.approvedVersion || '未設定'}
 - 使用備註：${asset.usageNotes}`,
     )
     .join('\n\n')}`
