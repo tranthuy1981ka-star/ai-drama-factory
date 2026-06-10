@@ -1,0 +1,61 @@
+import type { Character } from '../types/production'
+
+export const characters: Character[] = [
+  {
+    id: 'suli',
+    name: '蘇璃',
+    role: '女主角，表面 F 級，命線能力持有者',
+    personality: '冷靜、壓抑、敏銳，被羞辱時不急於反駁，習慣先觀察因果。',
+    appearance: '黑長髮、淺灰藍瞳、白色短外套、深色戰術裙褲、頸間命線吊墜。',
+    consistencyRules: [
+      '不可改成成熟御姐或可愛 Q 版。',
+      '不可換髮色、不可換成重妝、不可加誇張飾物。',
+      '眼神要有壓抑感與清醒感。',
+      '使用命線時指尖與瞳孔出現幽藍冷光。',
+      '反噬時臉色變白、頸側出現細裂紋、動作短暫失衡。',
+    ],
+    storyFunction: '由被評為 F 級的羞辱位置，逐步揭示她是評級系統外的高風險存在。',
+    promptNotes:
+      '如蘇璃出現，提示詞必須寫明黑長髮、淺灰藍瞳、白外套、深色戰術裙褲、命線吊墜、冷靜壓抑表情。',
+  },
+  {
+    id: 'han-ce',
+    name: '韓策',
+    role: 'A 級隊長，制度內強者',
+    personality: '果斷、驕傲、務實，初期不相信 F 級能改變戰局。',
+    appearance: '短黑髮、深藍制服外套、銀色肩章、冷硬眉眼。',
+    consistencyRules: ['不可寫成反派惡霸。', '行動乾脆，語氣克制。', '受傷後仍維持隊長姿態。'],
+    storyFunction: '代表評級系統與現場指揮權，與蘇璃形成能力認知衝突。',
+    promptNotes: '用冷色制服、金屬肩章、隊長氣場，避免偶像化過度。',
+  },
+  {
+    id: 'qin-yin',
+    name: '秦音',
+    role: '低階輔助員，E02 被蘇璃救下',
+    personality: '緊張但善良，在壓力下容易自責。',
+    appearance: '栗色短髮、圓框眼鏡、灰白後勤制服。',
+    consistencyRules: ['保持普通人質感。', '恐懼表情要真實，不要誇張搞笑。'],
+    storyFunction: '讓蘇璃第一次在眾人面前改變死亡倒數。',
+    promptNotes: '後勤制服、緊張眼神、手持資料板。',
+  },
+  {
+    id: 'shen-yao',
+    name: '沈曜',
+    role: '異能局監察官，E03 結尾鉤子',
+    personality: '溫和表面下極度精算，知道更多命線秘密。',
+    appearance: '銀灰長外套、細框眼鏡、黑手套、淡漠微笑。',
+    consistencyRules: ['不可過早暴露立場。', '笑容要像審計者，不像瘋狂反派。'],
+    storyFunction: '揭示蘇璃檔案被更新為未知神危等級，引出更大制度陰謀。',
+    promptNotes: '乾淨冷感、監察官權力感、低飽和色。',
+  },
+  {
+    id: 'core-beast',
+    name: '裂隙核心厄獸',
+    role: '第一個主要怪物，能感知命線',
+    personality: '具有智慧、會試探、會辨認蘇璃。',
+    appearance: '黑藍外骨骼、半透明胸腔核心、單眼裂光、長臂。',
+    consistencyRules: ['不可變成普通狼或恐龍。', '核心與單眼必須保留。', '動作有智慧，不只是撲咬。'],
+    storyFunction: '證明蘇璃的力量與裂隙有直接關聯。',
+    promptNotes: '黑藍外骨骼、幽藍核心、智慧凝視、冷色粒子。',
+  },
+]
