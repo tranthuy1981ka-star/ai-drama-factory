@@ -49,6 +49,7 @@ import {
   seedancePromptsText,
   seedancePrompt,
 } from './utils/exportUtils'
+import { exportProductionDb, importProductionDb, summarizeProductionDb, type ProductionDbRoot, type ProductionDbSummary } from './utils/productionDbAdapter'
 import {
   createProjectStateExport,
   loadAssetMetadata,
@@ -218,6 +219,18 @@ function App() {
     setNotice('Project state 已匯入')
   }
 
+  const importMasterDb = (db: ProductionDbRoot) => {
+    window.localStorage.setItem(`ai-drama-factory-pre-master-import-backup-${Date.now()}`, JSON.stringify(createProjectStateExport()))
+    const result = importProductionDb(db)
+    setShotOverrides(result.shotStatusOverrides)
+    setEpisodeOverrides(result.episodeStatusOverrides)
+    setBeatOverrides(result.beatStatusOverrides)
+    setAssetOverrides(result.assetStatusOverrides)
+    setAssetMetadata(result.assetMetadata)
+    setShotVersions(result.shotVersionHistory)
+    setNotice('Master DB 已匯入，舊 local state 已自動備份')
+  }
+
   const episodeProgress = (episodeId: string) => {
     const shots = shotCards.filter((shot) => shot.episodeId === episodeId)
     return Math.round(shots.reduce((sum, shot) => sum + progressWeight[shot.status], 0) / Math.max(shots.length, 1))
@@ -257,7 +270,7 @@ function App() {
     ),
     review: <ReviewQueuePage shotCards={shotCards} setShotStatus={setShotStatus} />,
     assets: <AssetLibraryPage assets={assets} setAssetStatus={setAssetStatus} updateAssetMetadata={updateAssetMetadata} />,
-    exports: <ExportCenterPage episodes={episodes} shotCards={shotCards} assets={assets} importProjectState={importProjectState} />,
+    exports: <ExportCenterPage episodes={episodes} shotCards={shotCards} assets={assets} importProjectState={importProjectState} importMasterDb={importMasterDb} />,
   }[page]
 
   return (
@@ -1051,15 +1064,21 @@ function ExportCenterPage({
   shotCards,
   assets,
   importProjectState,
+  importMasterDb,
 }: {
   episodes: typeof baseEpisodes
   shotCards: ShotCard[]
   assets: Asset[]
   importProjectState: (state: ProjectStateExport) => void
+  importMasterDb: (db: ProductionDbRoot) => void
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const masterDbInputRef = useRef<HTMLInputElement>(null)
+  const [pendingMasterDb, setPendingMasterDb] = useState<ProductionDbRoot | null>(null)
+  const [pendingSummary, setPendingSummary] = useState<ProductionDbSummary | null>(null)
   const approvedSeedanceShots = shotCards.filter((shot) => shot.episodeId === 'E01' && ['Video Prompt Ready', 'Generated', 'Final Approved'].includes(shot.status))
   const projectState = () => JSON.stringify(createProjectStateExport(), null, 2)
+  const masterDb = () => JSON.stringify(exportProductionDb({ episodes, shotCards, assets }), null, 2)
   const exports = [
     ['Project Bible as Markdown', 'ai_drama_factory_project_bible.md', projectBibleMarkdown(projectBible), 'text/markdown;charset=utf-8'],
     ['Episode Concepts as Markdown', 'suli_e01_e03_episode_concepts.md', episodeConceptsMarkdown(episodes), 'text/markdown;charset=utf-8'],
@@ -1074,11 +1093,25 @@ function ExportCenterPage({
     ['E01 Approved-only Seedance Prompts', 'e01_approved_seedance_prompts.txt', seedancePromptsText(approvedSeedanceShots), 'text/plain;charset=utf-8'],
     ['Asset List as Markdown', 'suli_asset_library.md', assetsMarkdown(assets), 'text/markdown;charset=utf-8'],
     ['Full Project State JSON', 'ai_drama_factory_project_state_v011.json', projectState(), 'application/json;charset=utf-8'],
+    ['Export Master DB', 'production_db.json', masterDb(), 'application/json;charset=utf-8'],
   ] as const
   const handleImport = async (file: File | undefined) => {
     if (!file) return
     const text = await file.text()
     importProjectState(JSON.parse(text) as ProjectStateExport)
+  }
+  const handleMasterDbImport = async (file: File | undefined) => {
+    if (!file) return
+    const text = await file.text()
+    const db = JSON.parse(text) as ProductionDbRoot
+    setPendingMasterDb(db)
+    setPendingSummary(summarizeProductionDb(db))
+  }
+  const confirmMasterDbImport = () => {
+    if (!pendingMasterDb) return
+    importMasterDb(pendingMasterDb)
+    setPendingMasterDb(null)
+    setPendingSummary(null)
   }
   return (
     <>
@@ -1098,6 +1131,51 @@ function ExportCenterPage({
           </button>
           <input ref={fileInputRef} className="hidden" type="file" accept="application/json,.json" onChange={(event) => void handleImport(event.target.files?.[0])} />
         </div>
+      </section>
+      <section className="mb-5 rounded-md border border-emerald-200 bg-emerald-50 p-5">
+        <h3 className="font-bold">Master DB Bridge</h3>
+        <p className="mt-1 text-sm text-emerald-900">Export / Import `production_db.json` for AI_Guoman_MASTER。Import 會先顯示 summary，確認後才寫入 localStorage，並自動建立本地備份。</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button className="btn-primary inline-flex items-center gap-2" onClick={() => downloadTextFile('production_db.json', masterDb(), 'application/json;charset=utf-8')} type="button">
+            <Download size={15} />
+            Export Master DB
+          </button>
+          <button className="btn-secondary inline-flex items-center gap-2" onClick={() => masterDbInputRef.current?.click()} type="button">
+            <Upload size={15} />
+            Import Master DB
+          </button>
+          <input ref={masterDbInputRef} className="hidden" type="file" accept="application/json,.json" onChange={(event) => void handleMasterDbImport(event.target.files?.[0])} />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2 text-sm">
+          {['Pending', 'Approved', 'Retake', 'Rejected', 'Needs Edit'].map((status) => (
+            <span key={status} className="rounded-full border border-emerald-300 bg-white px-3 py-1 font-semibold text-emerald-800">
+              {status}
+            </span>
+          ))}
+        </div>
+        {pendingSummary && (
+          <div className="mt-4 rounded-md border border-emerald-200 bg-white p-4">
+            <h4 className="font-bold">Import Summary</h4>
+            <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="Episodes" value={String(pendingSummary.episodes)} />
+              <Field label="Assets" value={String(pendingSummary.assets)} />
+              <Field label="Prompts" value={String(pendingSummary.prompts)} />
+              <Field label="Pending" value={String(pendingSummary.pending)} />
+              <Field label="Approved" value={String(pendingSummary.approved)} />
+              <Field label="Rejected" value={String(pendingSummary.rejected)} />
+              <Field label="Retake" value={String(pendingSummary.retake)} />
+              <Field label="Needs Edit" value={String(pendingSummary.needsEdit)} />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button className="btn-primary" type="button" onClick={confirmMasterDbImport}>
+                Confirm Import
+              </button>
+              <button className="btn-secondary" type="button" onClick={() => { setPendingMasterDb(null); setPendingSummary(null) }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </section>
       <div className="grid gap-4 md:grid-cols-2">
         {exports.map(([label, fileName, content, mimeType]) => (
