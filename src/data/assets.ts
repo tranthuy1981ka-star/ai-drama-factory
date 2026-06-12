@@ -1,11 +1,17 @@
 import type { Asset } from '../types/production'
 
+const storyboard25PanelUrl =
+  'https://tduggeuvaqfjayjzzkan.supabase.co/storage/v1/object/sign/ai-guoman-assets/AI_Guoman_MASTER/references/storyboard/REF_storyboard_25panel_layout_v01.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9mYmFkMDE4Ni03MGY1LTQ5ZTctYWZmZC1kNWQ1NWQ3M2E2MGMiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJhaS1ndW9tYW4tYXNzZXRzL0FJX0d1b21hbl9NQVNURVIvcmVmZXJlbmNlcy9zdG9yeWJvYXJkL1JFRl9zdG9yeWJvYXJkXzI1cGFuZWxfbGF5b3V0X3YwMS5wbmciLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzgxMjQ3OTk3LCJleHAiOjIwOTY2MDc5OTd9.RqLR1YvifX19YUPL4N3RtlMPtsJhyIrUgw1mdBzpQvk'
+const darkFemaleCharacterSheetUrl =
+  'https://tduggeuvaqfjayjzzkan.supabase.co/storage/v1/object/sign/ai-guoman-assets/AI_Guoman_MASTER/references/characters/REF_dark_female_character_sheet_v01.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9mYmFkMDE4Ni03MGY1LTQ5ZTctYWZmZC1kNWQ1NWQ3M2E2MGMiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJhaS1ndW9tYW4tYXNzZXRzL0FJX0d1b21hbl9NQVNURVIvcmVmZXJlbmNlcy9jaGFyYWN0ZXJzL1JFRl9kYXJrX2ZlbWFsZV9jaGFyYWN0ZXJfc2hlZXRfdjAxLnBuZyIsInNjb3BlIjoiZG93bmxvYWQiLCJpYXQiOjE3ODEyNDc5OTgsImV4cCI6MjA5NjYwNzk5OH0.qyzb6xM4uLh6fvPziC0UvdXGwKnWfuh3B3-y8wY2x10'
+
 const asset = (
   assetId: string,
   name: string,
   type: Asset['type'],
   description: string,
   usageNotes: string,
+  overrides: Partial<Asset> = {},
 ): Asset => ({
   assetId,
   name,
@@ -17,6 +23,7 @@ const asset = (
   thumbnailUrl: '',
   approvedVersion: '',
   usageNotes,
+  ...overrides,
 })
 
 export const assets: Asset[] = [
@@ -39,6 +46,28 @@ export const assets: Asset[] = [
   asset('shen-yao-ref', 'shen_yao_ref.png', 'character', '沈曜角色設定圖。', 'E03 結尾檔案更新 shot。'),
   asset('fate-line-fx', 'fate_line_fx.png', 'fx', '命線特效參考。', '所有命線視覺層。'),
   asset('backlash-fx', 'backlash_fx.png', 'fx', '反噬裂紋與冷光。', '蘇璃使用能力後的後果。'),
+  asset('ref-storyboard-25panel-layout-v01', 'REF Storyboard 25 Panel Layout v01', 'reference', '25 格 storyboard layout 手動參考圖。', '只作手動 storyboard layout reference，不批准用於影片生成。', {
+    suggestedPath: 'AI_Guoman_MASTER/references/storyboard/REF_storyboard_25panel_layout_v01.png',
+    status: 'Approved Reference',
+    googleDriveUrl: storyboard25PanelUrl,
+    thumbnailUrl: storyboard25PanelUrl,
+    approvedVersion: 'REF_storyboard_25panel_layout_v01.png',
+    source: 'manual_reference',
+    generationMethod: 'manual_reference',
+    approvedForVideo: false,
+    localPath: 'C:/Users/Kelvin Cheng/Documents/AI_Guoman_MASTER/05_storyboards_style_refs/REF_storyboard_25panel_layout_v01.png',
+  }),
+  asset('ref-dark-female-character-sheet-v01', 'REF Dark Female Character Sheet v01', 'reference', '深色女性角色設定手動參考圖。', '只作手動角色設定 reference，不批准用於影片生成。', {
+    suggestedPath: 'AI_Guoman_MASTER/references/characters/REF_dark_female_character_sheet_v01.png',
+    status: 'Approved Reference',
+    googleDriveUrl: darkFemaleCharacterSheetUrl,
+    thumbnailUrl: darkFemaleCharacterSheetUrl,
+    approvedVersion: 'REF_dark_female_character_sheet_v01.png',
+    source: 'manual_reference',
+    generationMethod: 'manual_reference',
+    approvedForVideo: false,
+    localPath: 'C:/Users/Kelvin Cheng/Documents/AI_Guoman_MASTER/02_character_refs_style_refs/REF_dark_female_character_sheet_v01.png',
+  }),
 ].map((item) =>
   item.type === 'location'
     ? { ...item, suggestedPath: `AI_Drama_Factory/05_Scene_Refs/${item.name}` }

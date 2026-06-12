@@ -20,7 +20,7 @@ export type EpisodeStatus =
   | 'Final Approved'
 
 export type AssetStatus = 'Missing' | 'Available' | 'Needs Update' | 'Approved Reference'
-export type AssetType = 'character' | 'location' | 'prop' | 'monster' | 'expression' | 'fx'
+export type AssetType = 'character' | 'location' | 'prop' | 'monster' | 'expression' | 'fx' | 'reference'
 export type ModelUsed = 'Seedance' | 'Kling' | 'Jimeng' | 'Other'
 export type ResultStatus = 'Approved' | 'Rejected' | 'Maybe'
 
@@ -114,6 +114,10 @@ export interface Asset {
   thumbnailUrl: string
   approvedVersion: string
   usageNotes: string
+  source?: 'ai_factory' | 'manual_reference'
+  generationMethod?: 'manual' | 'manual_reference'
+  approvedForVideo?: boolean
+  localPath?: string
 }
 
 export interface AssetMetadata {

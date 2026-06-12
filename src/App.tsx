@@ -1036,6 +1036,7 @@ function AssetCard({
     approvedVersion: asset.approvedVersion,
     usageNotes: asset.usageNotes,
   })
+  const previewUrl = metadata.thumbnailUrl || metadata.googleDriveUrl
   return (
     <article className="rounded-md border border-slate-200 bg-white p-5">
       <div className="flex items-start justify-between gap-3">
@@ -1045,6 +1046,7 @@ function AssetCard({
         </div>
         <Badge>{asset.status}</Badge>
       </div>
+      {previewUrl ? <img className="mt-4 aspect-video w-full rounded-md border border-slate-200 object-contain" src={previewUrl} alt={asset.name} /> : null}
       <p className="mt-3 text-sm text-slate-600">{asset.description}</p>
       <p className="mt-3 break-words rounded-md bg-slate-50 p-3 text-xs text-slate-600">{asset.suggestedPath}</p>
       <div className="mt-4 space-y-2">

@@ -84,8 +84,8 @@ export interface ProductionAsset {
   cloud_url: string
   thumbnail_url: string
   status: MasterStatus
-  source: 'ai_factory' | 'codex_imagegen' | 'manual' | 'runninghub' | 'seedance' | 'jimeng' | 'unknown'
-  generation_method: 'manual' | 'codex_imagegen' | 'runninghub' | 'seedance' | 'unknown'
+  source: 'ai_factory' | 'codex_imagegen' | 'manual' | 'manual_reference' | 'runninghub' | 'seedance' | 'jimeng' | 'unknown'
+  generation_method: 'manual' | 'manual_reference' | 'codex_imagegen' | 'runninghub' | 'seedance' | 'unknown'
   prompt_file: string
   batch_id: string
   approved_for_video: boolean
@@ -277,16 +277,16 @@ export const mapAiFactoryAssetToProductionAsset = (asset: Asset, statusOverride?
   shot_id: '',
   title: asset.name,
   description: asset.description,
-  local_path: '',
+  local_path: asset.localPath ?? '',
   relative_path: asset.suggestedPath,
   cloud_url: asset.googleDriveUrl,
   thumbnail_url: asset.thumbnailUrl,
   status: normalizeStatus(statusOverride ?? asset.status),
-  source: 'ai_factory',
-  generation_method: 'manual',
+  source: asset.source ?? 'ai_factory',
+  generation_method: asset.generationMethod ?? 'manual',
   prompt_file: '',
   batch_id: '',
-  approved_for_video: normalizeStatus(statusOverride ?? asset.status) === 'approved',
+  approved_for_video: asset.approvedForVideo ?? normalizeStatus(statusOverride ?? asset.status) === 'approved',
   created_at: '',
   updated_at: nowIso(),
   review_notes: asset.usageNotes,
