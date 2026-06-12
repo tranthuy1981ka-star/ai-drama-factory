@@ -113,3 +113,17 @@ export const saveProductionDbToCloud = async (productionDb: ProductionDbRoot, no
 
   return { ok: true, data: data as CloudProductionStateRow, error: null }
 }
+
+export const createAssetSignedUrl = async (bucket: string, storagePath: string, expiresInSeconds = 60 * 60 * 24): Promise<CloudSyncResult<string>> => {
+  const state = getSupabaseClientState()
+  if (!state.configured || !state.client) {
+    return { ok: false, data: null, error: state.message }
+  }
+
+  const { data, error } = await state.client.storage.from(bucket).createSignedUrl(storagePath, expiresInSeconds)
+  if (error) {
+    return { ok: false, data: null, error: error.message }
+  }
+
+  return { ok: true, data: data.signedUrl, error: null }
+}

@@ -145,6 +145,7 @@ export interface ProductionDbImportResult {
   beatStatusOverrides: StatusOverrides
   assetStatusOverrides: Record<string, AssetStatus>
   assetMetadata: Record<string, AssetMetadata>
+  cloudAssets: Asset[]
   shotVersionHistory: Record<string, ShotVersion[]>
   raw: ProductionDbRoot
 }
@@ -175,6 +176,7 @@ export const normalizeStatus = (status: string | undefined): MasterStatus => {
       return 'approved'
     case 'Needs Revision':
     case 'Needs Update':
+    case 'Needs Edit':
       return 'needs_edit'
     case 'Rejected':
       return 'rejected'
@@ -215,15 +217,37 @@ export const masterStatusToAssetStatus = (status: string | undefined): AssetStat
   switch (status) {
     case 'approved':
     case 'selected':
-      return 'Approved Reference'
+      return 'Approved'
     case 'needs_edit':
-    case 'retake':
       return 'Needs Update'
+    case 'retake':
+      return 'Retake'
     case 'rejected':
+      return 'Rejected'
     case 'archived':
     case 'pending':
     default:
-      return 'Missing'
+      return 'Pending'
+  }
+}
+
+export const assetStatusToMasterStatus = (status: string | undefined): MasterStatus => {
+  switch (status) {
+    case 'Approved Reference':
+    case 'Approved':
+      return 'approved'
+    case 'Needs Update':
+    case 'Needs Edit':
+      return 'needs_edit'
+    case 'Retake':
+      return 'retake'
+    case 'Rejected':
+      return 'rejected'
+    case 'Available':
+    case 'Missing':
+    case 'Pending':
+    default:
+      return 'pending'
   }
 }
 
@@ -271,31 +295,58 @@ export const mapAiFactoryShotToProductionClip = (shot: ShotCard, statusOverride?
 export const mapAiFactoryAssetToProductionAsset = (asset: Asset, statusOverride?: string): ProductionAsset => ({
   id: asset.assetId,
   type: asset.type,
-  episode: '',
-  scene: '',
-  clip_id: '',
-  shot_id: '',
+  episode: asset.episode ?? '',
+  scene: asset.scene ?? '',
+  clip_id: asset.clipId ?? '',
+  shot_id: asset.shotId ?? '',
   title: asset.name,
   description: asset.description,
   local_path: asset.localPath ?? '',
   relative_path: asset.suggestedPath,
   cloud_url: asset.googleDriveUrl,
   thumbnail_url: asset.thumbnailUrl,
-  status: normalizeStatus(statusOverride ?? asset.status),
+  status: assetStatusToMasterStatus(statusOverride ?? asset.status),
   source: asset.source ?? 'ai_factory',
   generation_method: asset.generationMethod ?? 'manual',
   prompt_file: '',
   batch_id: '',
-  approved_for_video: asset.approvedForVideo ?? normalizeStatus(statusOverride ?? asset.status) === 'approved',
+  approved_for_video: asset.approvedForVideo ?? false,
   created_at: '',
   updated_at: nowIso(),
   review_notes: asset.usageNotes,
-  tags: [asset.type],
+  tags: asset.tags ?? [asset.type],
   metadata: {
     approvedVersion: asset.approvedVersion,
     suggestedPath: asset.suggestedPath,
+    storage_bucket: asset.storageBucket,
+    storage_path: asset.storagePath,
   },
   raw: asset,
+})
+
+export const mapProductionAssetToAiFactoryAsset = (asset: ProductionAsset): Asset => ({
+  assetId: asset.id || String(asset.metadata?.storage_path ?? asset.title),
+  name: asset.title || asset.id,
+  type: ['character', 'location', 'prop', 'monster', 'expression', 'fx', 'reference', 'character_ref'].includes(asset.type) ? (asset.type as Asset['type']) : 'reference',
+  description: asset.description ?? '',
+  suggestedPath: asset.relative_path || String(asset.metadata?.storage_path ?? ''),
+  status: masterStatusToAssetStatus(asset.status),
+  googleDriveUrl: asset.cloud_url ?? '',
+  thumbnailUrl: asset.thumbnail_url || asset.cloud_url || '',
+  approvedVersion: String(asset.metadata?.approvedVersion ?? asset.metadata?.filename ?? ''),
+  usageNotes: asset.review_notes ?? '',
+  source: asset.source,
+  generationMethod: asset.generation_method,
+  approvedForVideo: asset.approved_for_video,
+  localPath: asset.local_path ?? '',
+  episode: asset.episode ?? '',
+  scene: asset.scene ?? '',
+  clipId: asset.clip_id ?? '',
+  shotId: asset.shot_id ?? '',
+  storageBucket: String(asset.metadata?.storage_bucket ?? 'ai-guoman-assets'),
+  storagePath: String(asset.metadata?.storage_path ?? asset.relative_path ?? ''),
+  cloudOnly: asset.source !== 'ai_factory',
+  tags: asset.tags ?? [],
 })
 
 export const mapAiFactoryPromptToProductionPrompt = (shot: ShotCard, type: PromptType): ProductionPrompt => {
@@ -466,6 +517,7 @@ export const importProductionDb = (json: unknown): ProductionDbImportResult => {
   const episodeStatusOverrides: EpisodeStatusOverrides = {}
   const assetStatusOverrides: Record<string, AssetStatus> = {}
   const assetMetadata: Record<string, AssetMetadata> = {}
+  const cloudAssets: Asset[] = []
   const shotVersionHistory: Record<string, ShotVersion[]> = {}
 
   for (const episode of db.episodes ?? []) {
@@ -475,7 +527,7 @@ export const importProductionDb = (json: unknown): ProductionDbImportResult => {
     if (clip.shot_id) shotStatusOverrides[clip.shot_id] = masterStatusToShotStatus(clip.status)
   }
   for (const asset of db.assets ?? []) {
-    if (asset.id && asset.source === 'ai_factory') {
+    if (asset.id) {
       assetStatusOverrides[asset.id] = masterStatusToAssetStatus(asset.status)
       assetMetadata[asset.id] = {
         googleDriveUrl: asset.cloud_url ?? '',
@@ -483,6 +535,7 @@ export const importProductionDb = (json: unknown): ProductionDbImportResult => {
         approvedVersion: String(asset.metadata?.approvedVersion ?? ''),
         usageNotes: asset.review_notes ?? '',
       }
+      cloudAssets.push(mapProductionAssetToAiFactoryAsset(asset))
     }
     if (asset.shot_id && asset.cloud_url && asset.type === 'video') {
       const version: ShotVersion = {
@@ -504,6 +557,7 @@ export const importProductionDb = (json: unknown): ProductionDbImportResult => {
     beatStatusOverrides: (metadata?.beatStatusOverrides as StatusOverrides | undefined) ?? {},
     assetStatusOverrides: { ...(metadata?.assetStatusOverrides ?? {}), ...assetStatusOverrides },
     assetMetadata: { ...(metadata?.assetMetadata ?? {}), ...assetMetadata },
+    cloudAssets,
     shotVersionHistory: { ...(metadata?.shotVersionHistory ?? {}), ...shotVersionHistory },
     raw: db,
   }

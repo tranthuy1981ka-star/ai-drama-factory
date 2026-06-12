@@ -50,7 +50,7 @@ import {
   seedancePrompt,
 } from './utils/exportUtils'
 import { exportProductionDb, importProductionDb, summarizeProductionDb, type ProductionDbRoot, type ProductionDbSummary } from './utils/productionDbAdapter'
-import { getCloudSyncStatus, loadProductionDbFromCloud, saveProductionDbToCloud, type CloudSyncStatus } from './utils/cloudProductionDb'
+import { createAssetSignedUrl, getCloudSyncStatus, loadProductionDbFromCloud, saveProductionDbToCloud, type CloudSyncStatus } from './utils/cloudProductionDb'
 import {
   getSupabaseAuthState,
   onSupabaseAuthStateChange,
@@ -103,6 +103,8 @@ const shotStatuses: ProductionStatus[] = [
 ]
 
 const assetStatuses: AssetStatus[] = ['Missing', 'Available', 'Needs Update', 'Approved Reference']
+const cloudAssetStatuses: AssetStatus[] = ['Pending', 'Approved', 'Retake', 'Rejected', 'Needs Edit']
+type AssetFilter = 'all' | 'references' | 'generated' | 'pending' | 'approved' | 'retake' | 'rejected' | 'needs_edit'
 const modelOptions: ModelUsed[] = ['Seedance', 'Kling', 'Jimeng', 'Other']
 const resultOptions: ResultStatus[] = ['Approved', 'Rejected', 'Maybe']
 
@@ -120,8 +122,11 @@ const statusTone: Record<string, string> = {
   Available: 'bg-green-50 text-green-700 border-green-200',
   'Needs Update': 'bg-amber-50 text-amber-700 border-amber-200',
   'Approved Reference': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  Pending: 'bg-slate-100 text-slate-700 border-slate-200',
   Approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   Rejected: 'bg-rose-50 text-rose-700 border-rose-200',
+  Retake: 'bg-amber-50 text-amber-700 border-amber-200',
+  'Needs Edit': 'bg-orange-50 text-orange-700 border-orange-200',
   Maybe: 'bg-amber-50 text-amber-700 border-amber-200',
   'Concept Draft': 'bg-slate-100 text-slate-700 border-slate-200',
   'Concept Approved': 'bg-cyan-50 text-cyan-700 border-cyan-200',
@@ -157,6 +162,27 @@ function ProgressBar({ value }: { value: number }) {
   )
 }
 
+const assetDedupeKey = (asset: Asset) => asset.assetId || asset.storagePath || asset.suggestedPath || asset.name
+
+const isGeneratedAsset = (asset: Asset) => asset.source === 'codex_imagegen' || asset.generationMethod === 'codex_imagegen'
+
+const isReferenceAsset = (asset: Asset) => asset.source === 'manual_reference' || asset.type === 'reference' || asset.type === 'character_ref'
+
+const mergeAssetLists = (base: Asset[], cloud: Asset[]) => {
+  const merged = new Map<string, Asset>()
+  for (const asset of base) {
+    merged.set(assetDedupeKey(asset), asset)
+  }
+  for (const asset of cloud) {
+    merged.set(assetDedupeKey(asset), {
+      ...merged.get(assetDedupeKey(asset)),
+      ...asset,
+      cloudOnly: asset.cloudOnly ?? !base.some((baseAsset) => assetDedupeKey(baseAsset) === assetDedupeKey(asset)),
+    })
+  }
+  return Array.from(merged.values())
+}
+
 function App() {
   const [page, setPage] = useState<Page>('overview')
   const [selectedEpisode, setSelectedEpisode] = useState('E01')
@@ -166,6 +192,7 @@ function App() {
   const [episodeOverrides, setEpisodeOverrides] = useState(loadEpisodeStatuses)
   const [assetOverrides, setAssetOverrides] = useState(loadAssetStatuses)
   const [assetMetadata, setAssetMetadata] = useState(loadAssetMetadata)
+  const [cloudAssets, setCloudAssets] = useState<Asset[]>([])
   const [shotVersions, setShotVersions] = useState(loadShotVersions)
   const [notice, setNotice] = useState('')
 
@@ -184,7 +211,7 @@ function App() {
     () => baseShotCards.map((shot) => ({ ...shot, status: shotOverrides[shot.shotId] ?? shot.status })),
     [shotOverrides],
   )
-  const assets = useMemo(
+  const baseLibraryAssets = useMemo(
     () =>
       baseAssets.map((asset) => {
         const metadata = assetMetadata[asset.assetId]
@@ -199,13 +226,34 @@ function App() {
       }),
     [assetOverrides, assetMetadata],
   )
+  const hydratedCloudAssets = useMemo(
+    () =>
+      cloudAssets.map((asset) => {
+        const metadata = assetMetadata[asset.assetId]
+        return {
+          ...asset,
+          status: assetOverrides[asset.assetId] ?? asset.status,
+          googleDriveUrl: metadata?.googleDriveUrl ?? asset.googleDriveUrl,
+          thumbnailUrl: metadata?.thumbnailUrl ?? asset.thumbnailUrl,
+          approvedVersion: metadata?.approvedVersion ?? asset.approvedVersion,
+          usageNotes: metadata?.usageNotes ?? asset.usageNotes,
+        }
+      }),
+    [assetOverrides, assetMetadata, cloudAssets],
+  )
+  const assets = useMemo(() => mergeAssetLists(baseLibraryAssets, hydratedCloudAssets), [baseLibraryAssets, hydratedCloudAssets])
   const selectedShot = shotCards.find((shot) => shot.shotId === selectedShotId) ?? shotCards[0]
 
   const setShotStatus = (shotId: string, status: ProductionStatus) => setShotOverrides((current) => ({ ...current, [shotId]: status }))
   const setBeatStatus = (episodeId: string, beatNumber: number, status: ProductionStatus) =>
     setBeatOverrides((current) => ({ ...current, [`${episodeId}-B${beatNumber}`]: status }))
   const setEpisodeStatus = (episodeId: string, status: EpisodeStatus) => setEpisodeOverrides((current) => ({ ...current, [episodeId]: status }))
-  const setAssetStatus = (assetId: string, status: AssetStatus) => setAssetOverrides((current) => ({ ...current, [assetId]: status }))
+  const setAssetStatus = (assetId: string, status: AssetStatus) => {
+    setAssetOverrides((current) => ({ ...current, [assetId]: status }))
+    setCloudAssets((current) => current.map((asset) => (asset.assetId === assetId ? { ...asset, status } : asset)))
+  }
+  const setAssetApprovedForVideo = (assetId: string, approvedForVideo: boolean) =>
+    setCloudAssets((current) => current.map((asset) => (asset.assetId === assetId ? { ...asset, approvedForVideo } : asset)))
   const updateAssetMetadata = (assetId: string, metadata: AssetMetadata) => setAssetMetadata((current) => ({ ...current, [assetId]: metadata }))
   const addShotVersion = (shotId: string, version: ShotVersion) =>
     setShotVersions((current) => ({ ...current, [shotId]: [...(current[shotId] ?? []), version] }))
@@ -235,6 +283,7 @@ function App() {
     setBeatOverrides(result.beatStatusOverrides)
     setAssetOverrides(result.assetStatusOverrides)
     setAssetMetadata(result.assetMetadata)
+    setCloudAssets(result.cloudAssets)
     setShotVersions(result.shotVersionHistory)
     setNotice('Master DB 已匯入，舊 local state 已自動備份')
   }
@@ -277,7 +326,7 @@ function App() {
       />
     ),
     review: <ReviewQueuePage shotCards={shotCards} setShotStatus={setShotStatus} />,
-    assets: <AssetLibraryPage assets={assets} setAssetStatus={setAssetStatus} updateAssetMetadata={updateAssetMetadata} />,
+    assets: <AssetLibraryPage assets={assets} setAssetStatus={setAssetStatus} setAssetApprovedForVideo={setAssetApprovedForVideo} updateAssetMetadata={updateAssetMetadata} />,
     exports: <ExportCenterPage episodes={episodes} shotCards={shotCards} assets={assets} importProjectState={importProjectState} importMasterDb={importMasterDb} />,
   }[page]
 
@@ -1001,20 +1050,53 @@ function ReviewQueuePage({ shotCards, setShotStatus }: { shotCards: ShotCard[]; 
 function AssetLibraryPage({
   assets,
   setAssetStatus,
+  setAssetApprovedForVideo,
   updateAssetMetadata,
 }: {
   assets: Asset[]
   setAssetStatus: (assetId: string, status: AssetStatus) => void
+  setAssetApprovedForVideo: (assetId: string, approvedForVideo: boolean) => void
   updateAssetMetadata: (assetId: string, metadata: AssetMetadata) => void
 }) {
+  const [filter, setFilter] = useState<AssetFilter>('all')
+  const filterOptions: { id: AssetFilter; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'references', label: 'References' },
+    { id: 'generated', label: 'Generated' },
+    { id: 'pending', label: 'Pending' },
+    { id: 'approved', label: 'Approved' },
+    { id: 'retake', label: 'Retake' },
+    { id: 'rejected', label: 'Rejected' },
+    { id: 'needs_edit', label: 'Needs Edit' },
+  ]
+  const filteredAssets = assets.filter((asset) => {
+    if (filter === 'references') return isReferenceAsset(asset)
+    if (filter === 'generated') return isGeneratedAsset(asset)
+    if (filter === 'pending') return asset.status === 'Pending' || asset.status === 'Missing'
+    if (filter === 'approved') return asset.status === 'Approved' || asset.status === 'Approved Reference'
+    if (filter === 'retake') return asset.status === 'Retake'
+    if (filter === 'rejected') return asset.status === 'Rejected'
+    if (filter === 'needs_edit') return asset.status === 'Needs Edit' || asset.status === 'Needs Update'
+    return true
+  })
   return (
     <>
       <PageHeader eyebrow="Asset Library" title="素材庫">
         <p>可回填 Google Drive URL、thumbnail、approved version 與 usage notes，資料會儲存在 localStorage 並可匯出 project state。</p>
       </PageHeader>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {filterOptions.map((option) => (
+          <button key={option.id} className={filter === option.id ? 'btn-primary' : 'btn-secondary'} type="button" onClick={() => setFilter(option.id)}>
+            {option.label}
+          </button>
+        ))}
+        <span className="ml-auto text-sm font-semibold text-slate-600">
+          {filteredAssets.length} / {assets.length} assets
+        </span>
+      </div>
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-        {assets.map((asset) => (
-          <AssetCard key={asset.assetId} asset={asset} setAssetStatus={setAssetStatus} updateAssetMetadata={updateAssetMetadata} />
+        {filteredAssets.map((asset) => (
+          <AssetCard key={asset.assetId} asset={asset} setAssetStatus={setAssetStatus} setAssetApprovedForVideo={setAssetApprovedForVideo} updateAssetMetadata={updateAssetMetadata} />
         ))}
       </div>
     </>
@@ -1024,10 +1106,12 @@ function AssetLibraryPage({
 function AssetCard({
   asset,
   setAssetStatus,
+  setAssetApprovedForVideo,
   updateAssetMetadata,
 }: {
   asset: Asset
   setAssetStatus: (assetId: string, status: AssetStatus) => void
+  setAssetApprovedForVideo: (assetId: string, approvedForVideo: boolean) => void
   updateAssetMetadata: (assetId: string, metadata: AssetMetadata) => void
 }) {
   const [metadata, setMetadata] = useState<AssetMetadata>({
@@ -1036,19 +1120,52 @@ function AssetCard({
     approvedVersion: asset.approvedVersion,
     usageNotes: asset.usageNotes,
   })
-  const previewUrl = metadata.thumbnailUrl || metadata.googleDriveUrl
+  const [signedPreviewUrl, setSignedPreviewUrl] = useState('')
+  const [previewError, setPreviewError] = useState('')
+  useEffect(() => {
+    let active = true
+    const refreshPreview = async () => {
+      setPreviewError('')
+      if (!asset.storagePath) {
+        setSignedPreviewUrl('')
+        return
+      }
+      const result = await createAssetSignedUrl(asset.storageBucket ?? 'ai-guoman-assets', asset.storagePath)
+      if (!active) return
+      if (result.ok && result.data) {
+        setSignedPreviewUrl(result.data)
+      } else {
+        setSignedPreviewUrl('')
+        setPreviewError(result.error ?? 'Preview unavailable')
+      }
+    }
+    void refreshPreview()
+    return () => {
+      active = false
+    }
+  }, [asset.storageBucket, asset.storagePath])
+  const previewUrl = signedPreviewUrl || metadata.thumbnailUrl || metadata.googleDriveUrl
+  const statusOptions = asset.cloudOnly ? cloudAssetStatuses : assetStatuses
   return (
     <article className="rounded-md border border-slate-200 bg-white p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-bold">{asset.name}</h3>
           <p className="mt-1 text-xs font-bold uppercase text-cyan-700">{asset.type}</p>
+          <div className="mt-2 flex flex-wrap gap-1 text-xs font-semibold text-slate-600">
+            {asset.source && <span className="rounded-full bg-slate-100 px-2 py-1">{asset.source}</span>}
+            {asset.generationMethod && <span className="rounded-full bg-slate-100 px-2 py-1">{asset.generationMethod}</span>}
+            {asset.cloudOnly && <span className="rounded-full bg-cyan-50 px-2 py-1 text-cyan-700">Cloud</span>}
+            {asset.approvedForVideo && <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">Video OK</span>}
+          </div>
         </div>
         <Badge>{asset.status}</Badge>
       </div>
       {previewUrl ? <img className="mt-4 aspect-video w-full rounded-md border border-slate-200 object-contain" src={previewUrl} alt={asset.name} /> : null}
+      {!previewUrl && previewError ? <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Preview unavailable</p> : null}
       <p className="mt-3 text-sm text-slate-600">{asset.description}</p>
       <p className="mt-3 break-words rounded-md bg-slate-50 p-3 text-xs text-slate-600">{asset.suggestedPath}</p>
+      {asset.storagePath && <p className="mt-2 break-words rounded-md bg-slate-50 p-3 text-xs text-slate-600">Storage: {asset.storageBucket ?? 'ai-guoman-assets'} / {asset.storagePath}</p>}
       <div className="mt-4 space-y-2">
         <input className="input" value={metadata.googleDriveUrl} onChange={(event) => setMetadata({ ...metadata, googleDriveUrl: event.target.value })} placeholder="Google Drive URL" />
         <input className="input" value={metadata.thumbnailUrl} onChange={(event) => setMetadata({ ...metadata, thumbnailUrl: event.target.value })} placeholder="Thumbnail URL" />
@@ -1056,11 +1173,16 @@ function AssetCard({
         <textarea className="input min-h-20" value={metadata.usageNotes} onChange={(event) => setMetadata({ ...metadata, usageNotes: event.target.value })} placeholder="Usage notes" />
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        {assetStatuses.map((status) => (
+        {statusOptions.map((status) => (
           <button key={status} className="btn-secondary" onClick={() => setAssetStatus(asset.assetId, status)} type="button">
             {status}
           </button>
         ))}
+        {asset.cloudOnly && (
+          <button className={asset.approvedForVideo ? 'btn-primary' : 'btn-secondary'} onClick={() => setAssetApprovedForVideo(asset.assetId, !asset.approvedForVideo)} type="button">
+            Approve for Video
+          </button>
+        )}
         <button className="btn-primary" onClick={() => updateAssetMetadata(asset.assetId, metadata)} type="button">
           儲存欄位
         </button>

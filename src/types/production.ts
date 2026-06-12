@@ -19,8 +19,8 @@ export type EpisodeStatus =
   | 'In Generation'
   | 'Final Approved'
 
-export type AssetStatus = 'Missing' | 'Available' | 'Needs Update' | 'Approved Reference'
-export type AssetType = 'character' | 'location' | 'prop' | 'monster' | 'expression' | 'fx' | 'reference'
+export type AssetStatus = 'Missing' | 'Available' | 'Needs Update' | 'Approved Reference' | 'Pending' | 'Approved' | 'Retake' | 'Rejected' | 'Needs Edit'
+export type AssetType = 'character' | 'location' | 'prop' | 'monster' | 'expression' | 'fx' | 'reference' | 'character_ref'
 export type ModelUsed = 'Seedance' | 'Kling' | 'Jimeng' | 'Other'
 export type ResultStatus = 'Approved' | 'Rejected' | 'Maybe'
 
@@ -114,10 +114,19 @@ export interface Asset {
   thumbnailUrl: string
   approvedVersion: string
   usageNotes: string
-  source?: 'ai_factory' | 'manual_reference'
-  generationMethod?: 'manual' | 'manual_reference'
+  source?: 'ai_factory' | 'manual_reference' | 'codex_imagegen' | 'manual' | 'runninghub' | 'seedance' | 'jimeng' | 'unknown'
+  generationMethod?: 'manual' | 'manual_reference' | 'codex_imagegen' | 'runninghub' | 'seedance' | 'unknown'
   approvedForVideo?: boolean
   localPath?: string
+  episode?: string
+  scene?: string
+  clipId?: string
+  shotId?: string
+  storageBucket?: string
+  storagePath?: string
+  cloudOnly?: boolean
+  previewUnavailable?: boolean
+  tags?: string[]
 }
 
 export interface AssetMetadata {
