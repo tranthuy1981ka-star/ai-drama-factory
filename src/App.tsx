@@ -50,6 +50,14 @@ import {
   seedancePrompt,
 } from './utils/exportUtils'
 import { exportProductionDb, importProductionDb, summarizeProductionDb, type ProductionDbRoot, type ProductionDbSummary } from './utils/productionDbAdapter'
+import { getCloudSyncStatus, loadProductionDbFromCloud, saveProductionDbToCloud, type CloudSyncStatus } from './utils/cloudProductionDb'
+import {
+  getSupabaseAuthState,
+  onSupabaseAuthStateChange,
+  signInWithEmailMagicLink,
+  signOutSupabase,
+  type SupabaseAuthState,
+} from './utils/supabaseClient'
 import {
   createProjectStateExport,
   loadAssetMetadata,
@@ -1076,6 +1084,27 @@ function ExportCenterPage({
   const masterDbInputRef = useRef<HTMLInputElement>(null)
   const [pendingMasterDb, setPendingMasterDb] = useState<ProductionDbRoot | null>(null)
   const [pendingSummary, setPendingSummary] = useState<ProductionDbSummary | null>(null)
+  const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>({
+    configured: false,
+    status: 'not_configured',
+    message: 'Checking cloud sync...',
+    lastUpdated: '',
+    projectId: 'AI_Guoman_MASTER',
+  })
+  const [cloudMessage, setCloudMessage] = useState('')
+  const [authState, setAuthState] = useState<SupabaseAuthState>({
+    configured: false,
+    user: null,
+    session: null,
+    message: 'Checking sign-in status...',
+  })
+  const [authEmail, setAuthEmail] = useState('')
+  const [authMessage, setAuthMessage] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
+  const [pendingCloudSave, setPendingCloudSave] = useState<ProductionDbRoot | null>(null)
+  const [pendingCloudLoad, setPendingCloudLoad] = useState<ProductionDbRoot | null>(null)
+  const [pendingCloudSummary, setPendingCloudSummary] = useState<ProductionDbSummary | null>(null)
+  const canUseCloudData = cloudStatus.configured && Boolean(authState.user)
   const approvedSeedanceShots = shotCards.filter((shot) => shot.episodeId === 'E01' && ['Video Prompt Ready', 'Generated', 'Final Approved'].includes(shot.status))
   const projectState = () => JSON.stringify(createProjectStateExport(), null, 2)
   const masterDb = () => JSON.stringify(exportProductionDb({ episodes, shotCards, assets }), null, 2)
@@ -1112,6 +1141,102 @@ function ExportCenterPage({
     importMasterDb(pendingMasterDb)
     setPendingMasterDb(null)
     setPendingSummary(null)
+  }
+  const refreshCloudStatus = async () => {
+    setCloudStatus(await getCloudSyncStatus())
+    setAuthState(await getSupabaseAuthState())
+  }
+  useEffect(() => {
+    void Promise.all([getCloudSyncStatus(), getSupabaseAuthState()]).then(([nextCloudStatus, nextAuthState]) => {
+      setCloudStatus(nextCloudStatus)
+      setAuthState(nextAuthState)
+    })
+    const subscription = onSupabaseAuthStateChange((nextAuthState) => setAuthState(nextAuthState))
+    return () => subscription?.unsubscribe()
+  }, [])
+  const handleSignIn = async () => {
+    const email = authEmail.trim()
+    if (!email) {
+      setAuthMessage('請輸入 Supabase Auth email。')
+      return
+    }
+
+    setAuthBusy(true)
+    const result = await signInWithEmailMagicLink(email)
+    setAuthBusy(false)
+    setAuthMessage(result.ok ? 'Magic link 已寄出。請到 email 開 link 完成登入。' : `Sign in failed: ${result.error}`)
+  }
+  const handleSignOut = async () => {
+    setAuthBusy(true)
+    const result = await signOutSupabase()
+    setAuthBusy(false)
+    setAuthMessage(result.ok ? '已登出 Supabase。' : `Sign out failed: ${result.error}`)
+    setAuthState(await getSupabaseAuthState())
+  }
+  const prepareCloudSave = () => {
+    if (!canUseCloudData) {
+      setCloudMessage('請先登入 Supabase 才能同步。')
+      return
+    }
+
+    const db = exportProductionDb({ episodes, shotCards, assets })
+    setPendingCloudSave(db)
+    setPendingCloudSummary(summarizeProductionDb(db))
+    setPendingCloudLoad(null)
+  }
+  const confirmCloudSave = async () => {
+    if (!pendingCloudSave) return
+    window.localStorage.setItem(`ai-drama-factory-pre-cloud-save-backup-${Date.now()}`, JSON.stringify(createProjectStateExport()))
+    const result = await saveProductionDbToCloud(pendingCloudSave, 'Saved from AI Factory Cloud Sync Panel')
+    setCloudMessage(result.ok ? 'Saved current state to cloud.' : `Save failed: ${result.error}`)
+    setPendingCloudSave(null)
+    setPendingCloudSummary(null)
+    await refreshCloudStatus()
+  }
+  const prepareCloudLoad = async () => {
+    if (!canUseCloudData) {
+      setCloudMessage('請先登入 Supabase 才能同步。')
+      return
+    }
+
+    const result = await loadProductionDbFromCloud()
+    if (!result.ok || !result.data) {
+      setCloudMessage(`Load failed: ${result.error}`)
+      return
+    }
+    const cloudDb = result.data.state
+    setPendingCloudLoad(cloudDb)
+    setPendingCloudSave(null)
+    setPendingCloudSummary(summarizeProductionDb(cloudDb))
+    const localUpdated = exportProductionDb({ episodes, shotCards, assets }).lastUpdated
+    if (result.data.updated_at && result.data.updated_at < localUpdated) {
+      setCloudMessage('Warning: cloud state may be older than local state. Check summary before confirming load.')
+    } else {
+      setCloudMessage('Cloud state loaded for review. Confirm before overwriting local state.')
+    }
+  }
+  const confirmCloudLoad = () => {
+    if (!pendingCloudLoad) return
+    window.localStorage.setItem(`ai-drama-factory-pre-cloud-load-backup-${Date.now()}`, JSON.stringify(createProjectStateExport()))
+    importMasterDb(pendingCloudLoad)
+    setPendingCloudLoad(null)
+    setPendingCloudSummary(null)
+    setCloudMessage('Loaded cloud state into local AI Factory state.')
+  }
+  const compareLocalVsCloud = async () => {
+    if (!canUseCloudData) {
+      setCloudMessage('請先登入 Supabase 才能同步。')
+      return
+    }
+
+    const local = summarizeProductionDb(exportProductionDb({ episodes, shotCards, assets }))
+    const result = await loadProductionDbFromCloud()
+    if (!result.ok || !result.data) {
+      setCloudMessage(`Compare failed: ${result.error}`)
+      return
+    }
+    const cloud = summarizeProductionDb(result.data.state)
+    setCloudMessage(`Local episodes/assets/prompts: ${local.episodes}/${local.assets}/${local.prompts}. Cloud: ${cloud.episodes}/${cloud.assets}/${cloud.prompts}.`)
   }
   return (
     <>
@@ -1171,6 +1296,103 @@ function ExportCenterPage({
                 Confirm Import
               </button>
               <button className="btn-secondary" type="button" onClick={() => { setPendingMasterDb(null); setPendingSummary(null) }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+      <section className="mb-5 rounded-md border border-blue-200 bg-blue-50 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-bold">Cloud Sync Panel</h3>
+            <p className="mt-1 text-sm text-blue-900">Supabase v0.1 syncs one full `production_db.json` snapshot. localStorage remains the fallback.</p>
+          </div>
+          <button className="btn-secondary" type="button" onClick={() => void refreshCloudStatus()}>
+            Refresh Status
+          </button>
+        </div>
+        <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
+          <Field label="Cloud Sync status" value={cloudStatus.status === 'configured' ? 'Configured' : cloudStatus.status === 'error' ? 'Error' : 'Not Configured'} />
+          <Field label="Last cloud updated time" value={cloudStatus.lastUpdated || 'No cloud state yet'} />
+          <Field label="Project ID" value={cloudStatus.projectId} />
+        </div>
+        <p className="mt-3 rounded-md bg-white p-3 text-sm text-blue-900">{cloudStatus.message}</p>
+        <div className="mt-3 rounded-md border border-blue-200 bg-white p-4">
+          <div className="grid gap-3 text-sm md:grid-cols-2">
+            <Field label="Supabase Auth" value={authState.user?.email ? `Signed in as ${authState.user.email}` : 'Not signed in'} />
+            <Field label="Sync permission" value={canUseCloudData ? 'Save / Load enabled' : 'Save / Load disabled'} />
+          </div>
+          {!authState.user && (
+            <p className="mt-3 rounded-md bg-amber-50 p-3 text-sm font-semibold text-amber-900">請先登入 Supabase 才能同步。</p>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {!authState.user && (
+              <>
+                <input
+                  className="input max-w-sm bg-white"
+                  type="email"
+                  value={authEmail}
+                  onChange={(event) => setAuthEmail(event.target.value)}
+                  placeholder="Supabase Auth email"
+                />
+                <button className="btn-primary" type="button" onClick={() => void handleSignIn()} disabled={authBusy || !cloudStatus.configured}>
+                  Sign in
+                </button>
+              </>
+            )}
+            {authState.user && (
+              <button className="btn-secondary" type="button" onClick={() => void handleSignOut()} disabled={authBusy}>
+                Sign out
+              </button>
+            )}
+          </div>
+          {authMessage && <p className="mt-3 rounded-md bg-blue-50 p-3 text-sm text-blue-900">{authMessage}</p>}
+        </div>
+        {cloudMessage && <p className="mt-3 rounded-md bg-white p-3 text-sm font-semibold text-slate-800">{cloudMessage}</p>}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button className="btn-primary" type="button" onClick={prepareCloudSave} disabled={!canUseCloudData}>
+            Save Current State to Cloud
+          </button>
+          <button className="btn-secondary" type="button" onClick={() => void prepareCloudLoad()} disabled={!canUseCloudData}>
+            Load State from Cloud
+          </button>
+          <button className="btn-secondary" type="button" onClick={() => void compareLocalVsCloud()} disabled={!canUseCloudData}>
+            Compare Local vs Cloud
+          </button>
+          <button className="btn-secondary" type="button" onClick={() => downloadTextFile('production_db.json', masterDb(), 'application/json;charset=utf-8')}>
+            Export Master DB
+          </button>
+          <button className="btn-secondary" type="button" onClick={() => masterDbInputRef.current?.click()}>
+            Import Master DB
+          </button>
+        </div>
+        {pendingCloudSummary && (
+          <div className="mt-4 rounded-md border border-blue-200 bg-white p-4">
+            <h4 className="font-bold">{pendingCloudSave ? 'Confirm Save to Cloud' : 'Confirm Load from Cloud'}</h4>
+            <p className="mt-1 text-sm text-slate-600">Local backup will be created before this operation changes cloud or local state.</p>
+            <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="Episodes" value={String(pendingCloudSummary.episodes)} />
+              <Field label="Assets" value={String(pendingCloudSummary.assets)} />
+              <Field label="Prompts" value={String(pendingCloudSummary.prompts)} />
+              <Field label="Pending" value={String(pendingCloudSummary.pending)} />
+              <Field label="Approved" value={String(pendingCloudSummary.approved)} />
+              <Field label="Rejected" value={String(pendingCloudSummary.rejected)} />
+              <Field label="Retake" value={String(pendingCloudSummary.retake)} />
+              <Field label="Needs Edit" value={String(pendingCloudSummary.needsEdit)} />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {pendingCloudSave && (
+                <button className="btn-primary" type="button" onClick={() => void confirmCloudSave()}>
+                  Confirm Save
+                </button>
+              )}
+              {pendingCloudLoad && (
+                <button className="btn-primary" type="button" onClick={confirmCloudLoad}>
+                  Confirm Load
+                </button>
+              )}
+              <button className="btn-secondary" type="button" onClick={() => { setPendingCloudSave(null); setPendingCloudLoad(null); setPendingCloudSummary(null) }}>
                 Cancel
               </button>
             </div>
