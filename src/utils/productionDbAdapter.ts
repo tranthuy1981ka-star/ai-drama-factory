@@ -225,6 +225,7 @@ export const masterStatusToAssetStatus = (status: string | undefined): AssetStat
     case 'rejected':
       return 'Rejected'
     case 'archived':
+      return 'Archived'
     case 'pending':
     default:
       return 'Pending'
@@ -243,6 +244,8 @@ export const assetStatusToMasterStatus = (status: string | undefined): MasterSta
       return 'retake'
     case 'Rejected':
       return 'rejected'
+    case 'Archived':
+      return 'archived'
     case 'Available':
     case 'Missing':
     case 'Pending':

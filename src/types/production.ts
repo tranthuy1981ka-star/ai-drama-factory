@@ -19,7 +19,17 @@ export type EpisodeStatus =
   | 'In Generation'
   | 'Final Approved'
 
-export type AssetStatus = 'Missing' | 'Available' | 'Needs Update' | 'Approved Reference' | 'Pending' | 'Approved' | 'Retake' | 'Rejected' | 'Needs Edit'
+export type AssetStatus =
+  | 'Missing'
+  | 'Available'
+  | 'Needs Update'
+  | 'Approved Reference'
+  | 'Pending'
+  | 'Approved'
+  | 'Retake'
+  | 'Rejected'
+  | 'Needs Edit'
+  | 'Archived'
 export type AssetType = 'character' | 'location' | 'prop' | 'monster' | 'expression' | 'fx' | 'reference' | 'character_ref'
 export type ModelUsed = 'Seedance' | 'Kling' | 'Jimeng' | 'Other'
 export type ResultStatus = 'Approved' | 'Rejected' | 'Maybe'

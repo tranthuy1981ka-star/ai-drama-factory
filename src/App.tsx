@@ -103,8 +103,8 @@ const shotStatuses: ProductionStatus[] = [
 ]
 
 const assetStatuses: AssetStatus[] = ['Missing', 'Available', 'Needs Update', 'Approved Reference']
-const cloudAssetStatuses: AssetStatus[] = ['Pending', 'Approved', 'Retake', 'Rejected', 'Needs Edit']
-type AssetFilter = 'all' | 'references' | 'generated' | 'pending' | 'approved' | 'retake' | 'rejected' | 'needs_edit'
+const cloudAssetStatuses: AssetStatus[] = ['Pending', 'Approved', 'Retake', 'Rejected', 'Needs Edit', 'Archived']
+type AssetFilter = 'active' | 'all' | 'references' | 'generated' | 'pending' | 'approved' | 'retake' | 'rejected' | 'needs_edit' | 'archived'
 const modelOptions: ModelUsed[] = ['Seedance', 'Kling', 'Jimeng', 'Other']
 const resultOptions: ResultStatus[] = ['Approved', 'Rejected', 'Maybe']
 
@@ -127,6 +127,7 @@ const statusTone: Record<string, string> = {
   Rejected: 'bg-rose-50 text-rose-700 border-rose-200',
   Retake: 'bg-amber-50 text-amber-700 border-amber-200',
   'Needs Edit': 'bg-orange-50 text-orange-700 border-orange-200',
+  Archived: 'bg-zinc-100 text-zinc-700 border-zinc-200',
   Maybe: 'bg-amber-50 text-amber-700 border-amber-200',
   'Concept Draft': 'bg-slate-100 text-slate-700 border-slate-200',
   'Concept Approved': 'bg-cyan-50 text-cyan-700 border-cyan-200',
@@ -1058,8 +1059,9 @@ function AssetLibraryPage({
   setAssetApprovedForVideo: (assetId: string, approvedForVideo: boolean) => void
   updateAssetMetadata: (assetId: string, metadata: AssetMetadata) => void
 }) {
-  const [filter, setFilter] = useState<AssetFilter>('all')
+  const [filter, setFilter] = useState<AssetFilter>('active')
   const filterOptions: { id: AssetFilter; label: string }[] = [
+    { id: 'active', label: 'Active' },
     { id: 'all', label: 'All' },
     { id: 'references', label: 'References' },
     { id: 'generated', label: 'Generated' },
@@ -1068,8 +1070,10 @@ function AssetLibraryPage({
     { id: 'retake', label: 'Retake' },
     { id: 'rejected', label: 'Rejected' },
     { id: 'needs_edit', label: 'Needs Edit' },
+    { id: 'archived', label: 'Archived' },
   ]
   const filteredAssets = assets.filter((asset) => {
+    if (filter === 'active') return ['Approved', 'Approved Reference', 'Pending', 'Missing', 'Needs Edit', 'Needs Update'].includes(asset.status)
     if (filter === 'references') return isReferenceAsset(asset)
     if (filter === 'generated') return isGeneratedAsset(asset)
     if (filter === 'pending') return asset.status === 'Pending' || asset.status === 'Missing'
@@ -1077,6 +1081,7 @@ function AssetLibraryPage({
     if (filter === 'retake') return asset.status === 'Retake'
     if (filter === 'rejected') return asset.status === 'Rejected'
     if (filter === 'needs_edit') return asset.status === 'Needs Edit' || asset.status === 'Needs Update'
+    if (filter === 'archived') return asset.status === 'Archived'
     return true
   })
   return (
