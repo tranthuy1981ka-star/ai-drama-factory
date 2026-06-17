@@ -6,6 +6,7 @@ import {
   Clipboard,
   Clapperboard,
   Download,
+  FileText,
   Film,
   FolderKanban,
   Image,
@@ -21,6 +22,7 @@ import { assets as baseAssets } from './data/assets'
 import { characters } from './data/characters'
 import { episodes as baseEpisodes, shotCards as baseShotCards } from './data/episodes'
 import { projectBible } from './data/projectBible'
+import { scriptBlueprintClips, scriptBlueprintEpisodes, stageOneScriptTitle } from './data/scriptBlueprint'
 import type {
   Asset,
   AssetMetadata,
@@ -75,10 +77,12 @@ import {
   saveShotVersions,
 } from './utils/storage'
 
-type Page = 'overview' | 'bible' | 'characters' | 'episodes' | 'beats' | 'storyboard' | 'prompts' | 'review' | 'assets' | 'exports'
+type Page = 'overview' | 'board' | 'scripts' | 'bible' | 'characters' | 'episodes' | 'beats' | 'storyboard' | 'prompts' | 'review' | 'assets' | 'exports'
 
 const pages: { id: Page; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
   { id: 'overview', label: '總覽', icon: FolderKanban },
+  { id: 'board', label: '生產看板', icon: ListChecks },
+  { id: 'scripts', label: '劇本庫 / Blueprint', icon: FileText },
   { id: 'bible', label: 'Project Bible', icon: BookOpen },
   { id: 'characters', label: '角色', icon: Users },
   { id: 'episodes', label: '集數', icon: Film },
@@ -107,6 +111,51 @@ const cloudAssetStatuses: AssetStatus[] = ['Pending', 'Approved', 'Retake', 'Rej
 type AssetFilter = 'active' | 'all' | 'references' | 'generated' | 'pending' | 'approved' | 'retake' | 'rejected' | 'needs_edit' | 'archived'
 const modelOptions: ModelUsed[] = ['Seedance', 'Kling', 'Jimeng', 'Other']
 const resultOptions: ResultStatus[] = ['Approved', 'Rejected', 'Maybe']
+
+const assetStatusLabels: Record<string, string> = {
+  Missing: '缺失',
+  Available: '可用',
+  'Needs Update': '需要修改',
+  'Approved Reference': '已批參考',
+  Pending: '待審核',
+  Approved: '已批',
+  Retake: '重做',
+  Rejected: '棄用',
+  'Needs Edit': '需要修改',
+  Archived: '已封存',
+}
+
+const assetTypeLabels: Record<string, string> = {
+  character: '角色',
+  character_ref: '角色參考',
+  location: '場景',
+  prop: '道具',
+  monster: '怪物',
+  expression: '表情',
+  fx: 'FX',
+  reference: '參考',
+  storyboard: '分鏡',
+  seedance_output: '影片輸出',
+  video: '影片',
+}
+
+const productionQueue = scriptBlueprintClips
+  .filter((clip) => clip.episodeId === 'EP01')
+  .map((clip) => ({
+    clipId: clip.clipId,
+    timecode: clip.timecode,
+    title: clip.titleZh,
+    scriptStatus: 'script_ready',
+    storyboardStatus: clip.storyboardStatus,
+    videoStatus: clip.videoStatus,
+    nextAction: clip.nextAction,
+    references:
+      clip.clipId === 'EP01_CLIP04'
+        ? ['SULI_AWAKEN_VIDEO_REF_v1', 'QIN_YIN_CHARACTER_REF_V2', 'EP01_SC02_CLIP03_FATE_LINE_TO_ABANDONED_MALL_SEEDANCE_TEST_v1']
+        : clip.clipId >= 'EP01_CLIP04'
+          ? ['SULI_AWAKEN_VIDEO_REF_v1', 'QIN_YIN_CHARACTER_REF_V2']
+          : ['SULI_AWAKEN_VIDEO_REF_v1'],
+  }))
 
 const statusTone: Record<string, string> = {
   Draft: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -310,6 +359,8 @@ function App() {
     overview: (
       <Overview counts={counts} overallProgress={overallProgress} episodes={episodes} episodeProgress={episodeProgress} shotCards={shotCards} assets={assets} />
     ),
+    board: <ProductionBoardPage assets={assets} />,
+    scripts: <ScriptBlueprintPage />,
     bible: <ProjectBiblePage />,
     characters: <CharactersPage />,
     episodes: <EpisodesPage episodes={episodes} shotCards={shotCards} episodeProgress={episodeProgress} setEpisodeStatus={setEpisodeStatus} />,
@@ -337,7 +388,7 @@ function App() {
         <div className="mb-6 rounded-md border border-cyan-100 bg-cyan-50 p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">AI Drama Factory</p>
           <h1 className="mt-1 text-xl font-bold">《她從F級開始封神》</h1>
-          <p className="mt-2 text-sm text-slate-600">E01 生產控制室</p>
+          <p className="mt-2 text-sm text-slate-600">EP01 生產控制室</p>
         </div>
         <nav className="space-y-1">
           {pages.map((item) => {
@@ -385,6 +436,243 @@ function PageHeader({ eyebrow, title, children }: { eyebrow: string; title: stri
       <h2 className="mt-1 text-3xl font-bold tracking-normal text-slate-950">{title}</h2>
       {children && <div className="mt-3 max-w-3xl text-slate-600">{children}</div>}
     </header>
+  )
+}
+
+function ProductionBoardPage({ assets }: { assets: Asset[] }) {
+  const assetById = useMemo(() => new Map(assets.map((asset) => [asset.assetId, asset])), [assets])
+  const statusLabel = (status: string) =>
+    ({
+      approved: '已批',
+      benchmark_existing: 'Benchmark',
+      blocked: '阻塞',
+      missing: '未有',
+      not_started: '未開始',
+      prompt_drafted: 'Prompt 已準備',
+      script_ready: '劇本 ready',
+      visual_benchmark_only: '只作 benchmark',
+    })[status] ?? status
+  const statusToneFor = (status: string) => {
+    if (status === 'approved') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    if (status === 'prompt_drafted' || status === 'script_ready') return 'bg-blue-50 text-blue-700 border-blue-200'
+    if (status === 'blocked') return 'bg-amber-50 text-amber-700 border-amber-200'
+    if (status === 'benchmark_existing' || status === 'visual_benchmark_only') return 'bg-purple-50 text-purple-700 border-purple-200'
+    return 'bg-slate-100 text-slate-700 border-slate-200'
+  }
+
+  return (
+    <>
+      <PageHeader eyebrow="Production Board" title="生產看板">
+        <p>EP01 快節奏 8 條 15 秒 clip 狀態。每條片先過 storyboard，再過 Seedance package，Generate 前必須由 Kelvin 最終確認。</p>
+      </PageHeader>
+      <section className="mb-5 grid gap-3 md:grid-cols-4">
+        {[
+          ['已批影片', productionQueue.filter((clip) => clip.videoStatus === 'approved').length],
+          ['待做分鏡', productionQueue.filter((clip) => clip.storyboardStatus === 'missing' || clip.storyboardStatus === 'prompt_drafted').length],
+          ['阻塞', productionQueue.filter((clip) => clip.storyboardStatus === 'blocked').length],
+          ['總 Clips', productionQueue.length],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-md border border-slate-200 bg-white p-4">
+            <p className="text-sm font-semibold text-slate-500">{label}</p>
+            <p className="mt-2 text-3xl font-bold">{value}</p>
+          </div>
+        ))}
+      </section>
+      <section className="mb-6 rounded-md border border-slate-200 bg-white p-5">
+        <h3 className="text-lg font-bold">EP01 Clip Timeline</h3>
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          {productionQueue.map((clip) => (
+            <div key={clip.clipId} className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-bold text-cyan-700">{clip.timecode}</p>
+              <p className="mt-1 font-bold">{clip.title}</p>
+              <p className="mt-1 break-words text-xs text-slate-500">{clip.clipId}</p>
+              <div className="mt-3 flex flex-wrap gap-1 text-xs font-semibold">
+                <span className={'rounded-full border px-2 py-1 ' + statusToneFor(clip.storyboardStatus)}>{statusLabel(clip.storyboardStatus)}</span>
+                <span className={'rounded-full border px-2 py-1 ' + statusToneFor(clip.videoStatus)}>影片 {statusLabel(clip.videoStatus)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="grid gap-4 xl:grid-cols-2">
+        {productionQueue.map((clip) => (
+          <article key={clip.clipId} className="rounded-md border border-slate-200 bg-white p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-cyan-700">{clip.clipId} ? {clip.timecode}</p>
+                <h3 className="mt-1 text-xl font-bold">{clip.title}</h3>
+              </div>
+              <span className={'rounded-full border px-2.5 py-1 text-xs font-semibold ' + statusToneFor(clip.videoStatus)}>影片 {statusLabel(clip.videoStatus)}</span>
+            </div>
+            <div className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
+              <Field label="Script" value={statusLabel(clip.scriptStatus)} />
+              <Field label="Storyboard" value={statusLabel(clip.storyboardStatus)} />
+              <Field label="Video" value={statusLabel(clip.videoStatus)} />
+            </div>
+            <p className="mt-4 rounded-md bg-slate-50 p-3 text-sm text-slate-700">{clip.nextAction}</p>
+            <div className="mt-4">
+              <p className="text-xs font-bold uppercase text-slate-500">References</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {clip.references.map((ref) => {
+                  const asset = assetById.get(ref)
+                  return (
+                    <span key={ref} className="max-w-full break-words rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-800">
+                      {asset?.name ?? ref}
+                    </span>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button className="btn-secondary" type="button">準備 storyboard prompt</button>
+              <button className="btn-secondary" type="button">準備 Seedance package</button>
+              <button className="btn-secondary" type="button">匯入最新 mp4</button>
+            </div>
+          </article>
+        ))}
+      </section>
+    </>
+  )
+}
+
+function ScriptBlueprintPage() {
+  const [episodeId, setEpisodeId] = useState('EP01')
+  const [query, setQuery] = useState('')
+  const [copied, setCopied] = useState('')
+  const selectedEpisode = scriptBlueprintEpisodes.find((episode) => episode.episodeId === episodeId) ?? scriptBlueprintEpisodes[0]
+  const normalizedQuery = query.trim().toLowerCase()
+  const visibleClips = selectedEpisode.clips.filter((clip) =>
+    [clip.clipId, clip.titleZh, clip.visualSummary, clip.dialogueLines.join(' '), clip.mainSellingPoint]
+      .join(' ')
+      .toLowerCase()
+      .includes(normalizedQuery),
+  )
+  const totalClips = scriptBlueprintClips.length
+  const ep01Clips = scriptBlueprintClips.filter((clip) => clip.episodeId === 'EP01')
+
+  const labelForStatus = (status: string) =>
+    ({
+      benchmark_existing: 'Benchmark 已有',
+      not_started: '未開始',
+      visual_benchmark_only: '只作視覺 benchmark',
+    })[status] ?? status
+
+  const copyBrief = async (kind: 'storyboard' | 'seedance', clipId: string) => {
+    const clip = scriptBlueprintClips.find((item) => item.clipId === clipId)
+    if (!clip) return
+    const title = kind === 'storyboard' ? '5-panel storyboard prompt brief' : 'Seedance 15s package brief'
+    const text = [
+      `${clip.clipId} — ${clip.timecode} — ${clip.titleZh}`,
+      '',
+      `Task: Prepare ${title}. Do not generate yet.`,
+      '',
+      `Visual: ${clip.visualSummary}`,
+      '',
+      `Dialogue:\n${clip.dialogueLines.join('\n')}`,
+      '',
+      `爽點: ${clip.mainSellingPoint}`,
+      '',
+      'Rules: one storyboard / one video only after Kelvin approval; keep Su Li consistent; do not call Seedance / RunningHub until final confirmation.',
+    ].join('\n')
+    await navigator.clipboard.writeText(text)
+    setCopied(`${clip.clipId} ${kind === 'storyboard' ? 'Storyboard' : 'Seedance'} brief 已複製`)
+    window.setTimeout(() => setCopied(''), 1600)
+  }
+
+  return (
+    <>
+      <PageHeader eyebrow="Script Library / Blueprint" title="劇本庫 / Blueprint">
+        <p>{stageOneScriptTitle}</p>
+        <p className="mt-2">
+          Stage 1 已整理成 {scriptBlueprintEpisodes.length} 集、{totalClips} 條 15 秒 clip。Clip01–03 只保留為 visual benchmark / workflow test，不作 final 正片。
+        </p>
+      </PageHeader>
+
+      {copied && <div className="fixed right-6 top-6 z-50 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white">{copied}</div>}
+
+      <section className="mb-5 grid gap-3 md:grid-cols-4">
+        {[
+          ['Episodes', scriptBlueprintEpisodes.length],
+          ['Total clips', totalClips],
+          ['EP01 clips', ep01Clips.length],
+          ['Benchmark only', ep01Clips.filter((clip) => clip.visualBenchmarkOnly).length],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-md border border-slate-200 bg-white p-4">
+            <p className="text-sm font-semibold text-slate-500">{label}</p>
+            <p className="mt-2 text-3xl font-bold">{value}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className="mb-5 rounded-md border border-slate-200 bg-white p-4">
+        <div className="grid gap-3 md:grid-cols-[220px_1fr]">
+          <label className="text-sm font-semibold text-slate-600">
+            Episode
+            <select className="mt-1 w-full rounded-md border border-slate-300 bg-white p-2" value={episodeId} onChange={(event) => setEpisodeId(event.target.value)}>
+              {scriptBlueprintEpisodes.map((episode) => (
+                <option key={episode.episodeId} value={episode.episodeId}>
+                  {episode.episodeId} · {episode.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm font-semibold text-slate-600">
+            Search clip / dialogue / visual
+            <input
+              className="mt-1 w-full rounded-md border border-slate-300 p-2"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="例如：命線、秦音、墟獸、沈曜"
+              value={query}
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        {visibleClips.map((clip) => (
+          <article key={clip.clipId} className="rounded-md border border-slate-200 bg-white p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-cyan-700">
+                  {clip.clipId} · {clip.timecode}
+                </p>
+                <h3 className="mt-1 text-xl font-bold">{clip.titleZh}</h3>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">{labelForStatus(clip.storyboardStatus)}</span>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">Video: {labelForStatus(clip.videoStatus)}</span>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+              <div>
+                <Field label="Visual" value={clip.visualSummary} />
+                <Field label="爽點" value={clip.mainSellingPoint} />
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase text-slate-500">Dialogue</p>
+                <div className="mt-1 rounded-md bg-slate-50 p-3 text-sm text-slate-700">
+                  {clip.dialogueLines.map((line) => (
+                    <p key={line} className="break-words">
+                      {line}
+                    </p>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs font-bold uppercase text-slate-500">Next action</p>
+                <p className="mt-1 rounded-md bg-cyan-50 p-3 text-sm text-cyan-900">{clip.nextAction}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button className="btn-secondary" onClick={() => void copyBrief('storyboard', clip.clipId)} type="button">
+                複製 Storyboard Brief
+              </button>
+              <button className="btn-secondary" onClick={() => void copyBrief('seedance', clip.clipId)} type="button">
+                複製 Seedance Brief
+              </button>
+            </div>
+          </article>
+        ))}
+      </section>
+    </>
   )
 }
 
@@ -1062,15 +1350,15 @@ function AssetLibraryPage({
   const [filter, setFilter] = useState<AssetFilter>('active')
   const filterOptions: { id: AssetFilter; label: string }[] = [
     { id: 'active', label: 'Active' },
-    { id: 'all', label: 'All' },
-    { id: 'references', label: 'References' },
-    { id: 'generated', label: 'Generated' },
-    { id: 'pending', label: 'Pending' },
-    { id: 'approved', label: 'Approved' },
-    { id: 'retake', label: 'Retake' },
-    { id: 'rejected', label: 'Rejected' },
-    { id: 'needs_edit', label: 'Needs Edit' },
-    { id: 'archived', label: 'Archived' },
+    { id: 'all', label: '全部' },
+    { id: 'references', label: '參考' },
+    { id: 'generated', label: '生成' },
+    { id: 'pending', label: '待審核' },
+    { id: 'approved', label: '已批' },
+    { id: 'retake', label: '重做' },
+    { id: 'rejected', label: '棄用' },
+    { id: 'needs_edit', label: '需要修改' },
+    { id: 'archived', label: '已封存' },
   ]
   const filteredAssets = assets.filter((asset) => {
     if (filter === 'active') return ['Approved', 'Approved Reference', 'Pending', 'Missing', 'Needs Edit', 'Needs Update'].includes(asset.status)
@@ -1087,7 +1375,7 @@ function AssetLibraryPage({
   return (
     <>
       <PageHeader eyebrow="Asset Library" title="素材庫">
-        <p>可回填 Google Drive URL、thumbnail、approved version 與 usage notes，資料會儲存在 localStorage 並可匯出 project state。</p>
+        <p>顯示 base assets 與 cloud production_state assets。預設隱藏 archived / rejected / retake，仍可用 filter 查看。</p>
       </PageHeader>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {filterOptions.map((option) => (
@@ -1155,8 +1443,8 @@ function AssetCard({
     <article className="rounded-md border border-slate-200 bg-white p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="font-bold">{asset.name}</h3>
-          <p className="mt-1 text-xs font-bold uppercase text-cyan-700">{asset.type}</p>
+          <h3 className="break-words font-bold">{asset.name}</h3>
+          <p className="mt-1 text-xs font-bold uppercase text-cyan-700">{assetTypeLabels[asset.type] ?? asset.type}</p>
           <div className="mt-2 flex flex-wrap gap-1 text-xs font-semibold text-slate-600">
             {asset.source && <span className="rounded-full bg-slate-100 px-2 py-1">{asset.source}</span>}
             {asset.generationMethod && <span className="rounded-full bg-slate-100 px-2 py-1">{asset.generationMethod}</span>}
@@ -1164,13 +1452,13 @@ function AssetCard({
             {asset.approvedForVideo && <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">Video OK</span>}
           </div>
         </div>
-        <Badge>{asset.status}</Badge>
+        <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusTone[asset.status] ?? statusTone.Draft}`}>{assetStatusLabels[asset.status] ?? asset.status}</span>
       </div>
       {previewUrl ? <img className="mt-4 aspect-video w-full rounded-md border border-slate-200 object-contain" src={previewUrl} alt={asset.name} /> : null}
       {!previewUrl && previewError ? <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">Preview unavailable</p> : null}
-      <p className="mt-3 text-sm text-slate-600">{asset.description}</p>
-      <p className="mt-3 break-words rounded-md bg-slate-50 p-3 text-xs text-slate-600">{asset.suggestedPath}</p>
-      {asset.storagePath && <p className="mt-2 break-words rounded-md bg-slate-50 p-3 text-xs text-slate-600">Storage: {asset.storageBucket ?? 'ai-guoman-assets'} / {asset.storagePath}</p>}
+      <p className="mt-3 line-clamp-3 break-words text-sm text-slate-600">{asset.description}</p>
+      <p className="mt-3 max-h-20 overflow-hidden break-words rounded-md bg-slate-50 p-3 text-xs text-slate-600">{asset.suggestedPath}</p>
+      {asset.storagePath && <p className="mt-2 max-h-20 overflow-hidden break-words rounded-md bg-slate-50 p-3 text-xs text-slate-600">Storage: {asset.storageBucket ?? 'ai-guoman-assets'} / {asset.storagePath}</p>}
       <div className="mt-4 space-y-2">
         <input className="input" value={metadata.googleDriveUrl} onChange={(event) => setMetadata({ ...metadata, googleDriveUrl: event.target.value })} placeholder="Google Drive URL" />
         <input className="input" value={metadata.thumbnailUrl} onChange={(event) => setMetadata({ ...metadata, thumbnailUrl: event.target.value })} placeholder="Thumbnail URL" />
@@ -1180,12 +1468,12 @@ function AssetCard({
       <div className="mt-4 flex flex-wrap gap-2">
         {statusOptions.map((status) => (
           <button key={status} className="btn-secondary" onClick={() => setAssetStatus(asset.assetId, status)} type="button">
-            {status}
+            {assetStatusLabels[status] ?? status}
           </button>
         ))}
         {asset.cloudOnly && (
           <button className={asset.approvedForVideo ? 'btn-primary' : 'btn-secondary'} onClick={() => setAssetApprovedForVideo(asset.assetId, !asset.approvedForVideo)} type="button">
-            Approve for Video
+            可送去影片
           </button>
         )}
         <button className="btn-primary" onClick={() => updateAssetMetadata(asset.assetId, metadata)} type="button">

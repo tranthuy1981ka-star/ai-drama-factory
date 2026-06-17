@@ -330,7 +330,9 @@ export const mapAiFactoryAssetToProductionAsset = (asset: Asset, statusOverride?
 export const mapProductionAssetToAiFactoryAsset = (asset: ProductionAsset): Asset => ({
   assetId: asset.id || String(asset.metadata?.storage_path ?? asset.title),
   name: asset.title || asset.id,
-  type: ['character', 'location', 'prop', 'monster', 'expression', 'fx', 'reference', 'character_ref'].includes(asset.type) ? (asset.type as Asset['type']) : 'reference',
+  type: ['character', 'location', 'prop', 'monster', 'expression', 'fx', 'reference', 'character_ref', 'storyboard', 'seedance_output', 'video'].includes(asset.type)
+    ? (asset.type as Asset['type'])
+    : 'reference',
   description: asset.description ?? '',
   suggestedPath: asset.relative_path || String(asset.metadata?.storage_path ?? ''),
   status: masterStatusToAssetStatus(asset.status),
@@ -496,6 +498,25 @@ export const exportProductionDb = (input: { episodes: Episode[]; shotCards: Shot
       assetStatusOverrides,
       assetMetadata,
       shotVersionHistory: shotVersions,
+      script_records: [
+        {
+          id: 'SEASON_01_STAGE_1_EP01_EP12_FULL_SCRIPT_v1',
+          type: 'script_blueprint',
+          status: 'approved_draft',
+          source: 'manual_script',
+          storage_bucket: 'ai-guoman-assets',
+          storage_path: 'AI_Guoman_MASTER/scripts/SEASON_01_STAGE_1_EP01_EP12_FULL_SCRIPT_v1.md',
+        },
+        {
+          id: 'EP01_FULL_SCRIPT_V0_2_FAST_DIALOGUE',
+          type: 'episode_script',
+          episode: 'EP01',
+          status: 'approved_draft',
+          source: 'manual_script',
+          storage_bucket: 'ai-guoman-assets',
+          storage_path: 'AI_Guoman_MASTER/scripts/EP01_FULL_SCRIPT_V0_2_FAST_DIALOGUE.md',
+        },
+      ],
     },
   }
 }
